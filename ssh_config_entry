@@ -1,0 +1,5 @@
+#add these lines to ~/.ssh/config or just use this file if one doesn't exist
+
+host factor-3210
+hostname factor-3210.cc.gatech.edu
+user <insert_your_username_here> 
