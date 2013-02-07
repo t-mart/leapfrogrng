@@ -33,3 +33,10 @@ make modules_install install
 /sbin/mkinitrd --rootfs nfs --omit-scsi-modules --fstab=$(FSTAB_PATH)
 --rootdev 130.207.21.7:/export/$(FACTOR) -f /boot/initrd-$(KERNEL).img
 $(KERNEL)
+
+#cleaning out an old/unneeded kernel can be done as follows:
+# 1. make distclean in the build dir (not sure if this is needed)
+# 2. rm -r /lib/modules/X.Y.Z-whatever
+# 3. rm /boot/initrd-X.Y.Z-whatever.img
+# 4. rm /boot/vmlinuz-X.Y.Z-whatever
+# 5. remove the grub.conf entry
