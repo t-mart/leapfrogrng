@@ -12,11 +12,13 @@
 #       sysfs	/sys	sysfs	defaults	0	0
 #       proc	/proc	proc	defaults	0	0
 #       zefram:/export/factor_homes	/nethome	nfs	defaults,intr	0	0
-# 2. extract a kernel place this file inside, and then run as root
-# 3. place this file inside the extracted kernel directory
-# 4. run this as root
-# 5. don't worry about the errors
-# 6. edit grub.conf with a new entry, like this:
+# 2. extract a kernel
+# 3. in the kernel's toplevel Makefile, give EXTRAVERSION a descriptive unique name
+#     this will effect the KERNEL variable below
+# 4. place this file inside the extracted kernel directory
+# 5. run this as root
+# 6. don't worry about the errors
+# 7. edit grub.conf with a new entry, like this:
 #       title My Project #1
 #       root (hd0,0)
 #       kernel /vmlinuz-X.Y.Z-whatever ro
