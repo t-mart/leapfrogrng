@@ -48,6 +48,8 @@
 #include <linux/init.h>      // included for __init and __exit macros
 #include <linux/proc_fs.h>   // give us access to proc_fs
 
+#define LFRNG_LOG_ID "[lfrng] "
+
 #define PROC_F_NAME "lfrng"
 
 //Documentation macros
@@ -60,12 +62,12 @@ static struct proc_dir_entry *proc_f;
 
 static int __init lfrng_init(void)
 {
-	printk(KERN_INFO "Initializing lfrng...");
+	printk(KERN_INFO LFRNG_LOG_ID "Initializing...\n");
 	/* create the /proc file */
 	proc_f = create_proc_entry(PROC_F_NAME, 0644, NULL);
 
 	if (proc_f == NULL) {
-		printk(KERN_ALERT "Error: Could not initialize /proc/%s\n", PROC_F_NAME);
+		printk(KERN_ALERT LFRNG_LOG_ID "Error: Could not initialize /proc/%s\n", PROC_F_NAME);
 		return -ENOMEM;
 	}
 
@@ -75,15 +77,15 @@ static int __init lfrng_init(void)
 	proc_f->gid   = 0;
 	//proc_f->size  = 37;
 
-	printk(KERN_INFO "/proc/%s created\n", PROC_F_NAME);
+	printk(KERN_INFO LFRNG_LOG_ID "/proc/%s created.\n", PROC_F_NAME);
 	return 0;    // Non-zero return means that the module couldn't be loaded.
 }
 
 static void __exit lfrng_exit(void)
 {
-	printk(KERN_INFO "Exiting lfrng...");
+	printk(KERN_INFO LFRNG_LOG_ID "Removing proc entry...\n");
 	remove_proc_entry(PROC_F_NAME, &proc_root);
-	printk(KERN_INFO "done.\n");
+	printk(KERN_INFO LFRNG_LOG_ID "Exited.\n");
 }
 
 module_init(lfrng_init);
