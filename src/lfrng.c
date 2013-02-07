@@ -83,7 +83,7 @@ static void __exit lfrng_exit(void)
 {
 	printk(KERN_INFO "Exiting lfrng...");
 	remove_proc_entry(PROC_F_NAME, &proc_root);
-	printk(KERN_INFO "done.");
+	printk(KERN_INFO "done.\n");
 }
 
 module_init(lfrng_init);
