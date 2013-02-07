@@ -32,6 +32,7 @@
 // Some snippets taken from:
 //   http://blog.markloiseau.com/2012/04/hello-world-loadable-kernel-module-tutorial/
 //   http://www.tldp.org/LDP/lkmpg/2.6/html/lkmpg.html
+//   http://code.google.com/p/batterymine/wiki/Understanding_of_Procfs
 
 // Defining __KERNEL__ and MODULE allows us to access kernel-level code not
 // usually available to userspace programs.
@@ -47,6 +48,7 @@
 #include <linux/kernel.h>    // included for KERN_INFO
 #include <linux/init.h>      // included for __init and __exit macros
 #include <linux/proc_fs.h>   // give us access to proc_fs
+#include <asm/uaccess.h>     // get/put_use, copy_from/to_user
 
 #define LFRNG_LOG_ID "[lfrng] "
 
@@ -60,22 +62,64 @@
 //proc file struct
 static struct proc_dir_entry *proc_f;
 
+static char proc_f_buffer[1024];
+static unsigned long proc_f_buffer_size = 0;
+
+static int lfrng_proc_f_read(char *buffer, char **buffer_location, off_t offset, int buffer_length,
+			     int *eof, void *data)
+{
+	int ret;
+	
+	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_read called\n");
+	
+	if (off > 0) {
+		/* we have finished to read, return 0 */
+		ret  = 0;
+	} else {
+		/* fill the buffer, return the buffer size */
+		memcpy(buffer, proc_f_buffer, proc_f_buffer_size);
+		ret = proc_f_buffer_size;
+	}
+
+	return ret;
+}
+
+static int lfrng_proc_f_write(struct file *file, const char *buffer,
+			      unsigned long count, void *data)
+{
+	/* get buffer size */
+	proc_f_buffer_size = count;
+	if (proc_f_buffer_size > PROCFS_MAX_SIZE ) {
+		proc_f_buffer_size = PROCFS_MAX_SIZE;
+	}
+	
+	/* write data to the buffer */
+	if ( copy_from_user(proc_f_buffer, buffer, proc_f_buffer_size) ) {
+		return -EFAULT;
+	}
+	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_write called\n");
+	
+	return proc_f_buffer_size;
+}
+
 static int __init lfrng_init(void)
 {
 	printk(KERN_INFO LFRNG_LOG_ID "Initializing...\n");
 	/* create the /proc file */
-	proc_f = create_proc_entry(PROC_F_NAME, 0644, NULL);
+	proc_f = create_proc_entry(PROC_F_NAME, 0666, NULL);
 
 	if (proc_f == NULL) {
 		printk(KERN_ALERT LFRNG_LOG_ID "Error: Could not initialize /proc/%s\n", PROC_F_NAME);
 		return -ENOMEM;
 	}
 
-	proc_f->owner = THIS_MODULE;
-	proc_f->mode  = S_IFREG | S_IRUGO;
-	proc_f->uid   = 0;
-	proc_f->gid   = 0;
-	//proc_f->size  = 37;
+	proc_f->read_proc  = lfrng_proc_f_read;
+	proc_f->write_proc = lfrng_proc_f_write;
+	proc_f->owner      = THIS_MODULE;
+	proc_f->mode       = S_IFREG | S_IRUGO;
+	proc_f->uid        = 0;
+	proc_f->gid        = 0;
+	proc_f->size     = 37;
 
 	printk(KERN_INFO LFRNG_LOG_ID "/proc/%s created.\n", PROC_F_NAME);
 	return 0;    // Non-zero return means that the module couldn't be loaded.
