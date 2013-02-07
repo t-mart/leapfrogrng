@@ -11,6 +11,12 @@ tunnel:
 vnc:
 	vncviewer localhost:4
 
-.PHONY: test
+.PHONY: test load unload
 test:
 	make -C test
+
+load:
+	make -C src load
+
+unload:
+	make -C src unload
