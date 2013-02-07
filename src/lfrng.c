@@ -1,7 +1,7 @@
 // Eric,
 //
 // To test, you might find yourself needing to actually get on the factor. So
-// I put together some steps:
+// I put together some steps and documented around the project where I could:
 //   follow instructions in ssh_config_entry
 //   make tunnel (in the root Makefile, not src's)
 //   <your_vnc_viewer> localhost:4 (i use tightvnc from my distro's repos)
@@ -9,6 +9,10 @@
 // If you want to get a shell without ssh (easier imo),
 //   (make tunnel if not already done)
 //   ssh <username>@localhost:60022
+//
+// To get this code to the system, I made a git repo here which pulls from
+// github.com, but that might by a little tricky (SSH keys). Use SCP for a quick
+// and dirty solution.
 //
 // Use make load or make unload respectively. I put targets in both Makefile and
 // src/Makefile. Gotta be root.
@@ -18,7 +22,7 @@
 // (or run without the -f flag to just print the last few lines)
 //
 // This pages seem like it might come in handy:
-//   www.tldp.org/LDP/lkmpg/2.6/html/lkmpg.html
+//   http://www.tldp.org/LDP/lkmpg/2.6/html/lkmpg.html
 //   newdata.box.sk/raven/lkm.html (search for proc_fs)
 //
 // See you in class.
@@ -26,8 +30,9 @@
 // -Tim
 
 // Some snippets taken from:
-// http://blog.markloiseau.com/2012/04/hello-world-loadable-kernel-module-tutorial/
-//
+//   http://blog.markloiseau.com/2012/04/hello-world-loadable-kernel-module-tutorial/
+//   http://www.tldp.org/LDP/lkmpg/2.6/html/lkmpg.html
+
 // Defining __KERNEL__ and MODULE allows us to access kernel-level code not
 // usually available to userspace programs.
 #undef __KERNEL__
@@ -55,30 +60,30 @@ static struct proc_dir_entry *proc_f;
 
 static int __init lfrng_init(void)
 {
-  printk(KERN_INFO "Initializing lfrng...");
-  /* create the /proc file */
-  proc_f = create_proc_entry(PROC_F_NAME, 0644, NULL);
+	printk(KERN_INFO "Initializing lfrng...");
+	/* create the /proc file */
+	proc_f = create_proc_entry(PROC_F_NAME, 0644, NULL);
 
-  if (proc_f == NULL) {
-    printk(KERN_ALERT "Error: Could not initialize /proc/%s\n", PROC_F_NAME);
-    return -ENOMEM;
-  }
+	if (proc_f == NULL) {
+		printk(KERN_ALERT "Error: Could not initialize /proc/%s\n", PROC_F_NAME);
+		return -ENOMEM;
+	}
 
-  proc_f->owner = THIS_MODULE;
-  proc_f->mode  = S_IFREG | S_IRUGO;
-  proc_f->uid   = 0;
-  proc_f->gid   = 0;
-  //proc_f->size  = 37;
+	proc_f->owner = THIS_MODULE;
+	proc_f->mode  = S_IFREG | S_IRUGO;
+	proc_f->uid   = 0;
+	proc_f->gid   = 0;
+	//proc_f->size  = 37;
 
-  printk(KERN_INFO "/proc/%s created\n", PROC_F_NAME);
-  return 0;    // Non-zero return means that the module couldn't be loaded.
+	printk(KERN_INFO "/proc/%s created\n", PROC_F_NAME);
+	return 0;    // Non-zero return means that the module couldn't be loaded.
 }
 
 static void __exit lfrng_exit(void)
 {
-  printk(KERN_INFO "Exiting lfrng...");
-  remove_proc_entry(PROC_F_NAME, &proc_root);
-  printk(KERN_INFO "done.");
+	printk(KERN_INFO "Exiting lfrng...");
+	remove_proc_entry(PROC_F_NAME, &proc_root);
+	printk(KERN_INFO "done.");
 }
 
 module_init(lfrng_init);
@@ -88,3 +93,5 @@ MODULE_LICENSE(LICENSE);
 MODULE_AUTHOR(AUTHORS);
 MODULE_DESCRIPTION(DESC);
 
+// trying to follow the linux conventions
+// vim:tw=80:ts=8:sw=8:noexpandtab:fdm=syntax
