@@ -30,9 +30,7 @@ make && make modules
 
 make modules_install install
 
-/sbin/mkinitrd --rootfs nfs --omit-scsi-modules --fstab=$(FSTAB_PATH)
---rootdev 130.207.21.7:/export/$(FACTOR) -f /boot/initrd-$(KERNEL).img
-$(KERNEL)
+/sbin/mkinitrd --rootfs nfs --omit-scsi-modules --fstab=$FSTAB_PATH --rootdev 130.207.21.7:/export/$FACTOR -f /boot/initrd-$KERNEL.img $KERNEL
 
 #cleaning out an old/unneeded kernel can be done as follows:
 # 1. make distclean in the build dir (not sure if this is needed)
