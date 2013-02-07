@@ -10,3 +10,7 @@ tunnel:
 
 vnc:
 	vncviewer localhost:4
+
+.PHONY: test
+test:
+	make -C test
