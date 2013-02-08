@@ -48,6 +48,7 @@
 #include <linux/kernel.h>    // included for KERN_INFO
 #include <linux/init.h>      // included for __init and __exit macros
 #include <linux/proc_fs.h>   // give us access to proc_fs
+#include <linux/sched.h>     // included for current task ptr
 #include <asm/uaccess.h>     // get/put_use, copy_from/to_user
 
 #define LFRNG_LOG_ID "[lfrng] "
@@ -74,8 +75,18 @@ static int lfrng_proc_f_read(char *buffer, char **buffer_location, off_t offset,
 int buffer_length, int *eof, void *data)
 {
 	int ret;
+	struct task_struct *curr_task;
 	
 	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_read called\n");
+
+	// Get current task_struct
+	curr_task = current;
+	// print gid and pid
+	printk(KERN_INFO LFRNG_LOG_ID "called by gid %u, pid %u\n", curr_task->gid, curr_task->pid);
+
+	// print input arguements
+	printk(KERN_INFO LFRNG_LOG_ID "offset = %u\n", offset);
+	printk(KERN_INFO LFRNG_LOG_ID "buffer_length = %u\n", buffer_length);
 	
 	if (offset > 0) {
 		/* we have finished to read, return 0 */
@@ -90,7 +101,7 @@ int buffer_length, int *eof, void *data)
 }
 
 static int lfrng_proc_f_write(struct file *file, const char *buffer,
-			      unsigned long count, void *data)
+unsigned long count, void *data)
 {
 	/* get buffer size */
 	proc_f_buffer_size = count;
