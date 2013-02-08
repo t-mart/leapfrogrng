@@ -1,3 +1,12 @@
+// Tim,
+//
+// grep <kernel-src>/fs/proc/generic.c for "How to be a proc read function"
+//	 (It explains how to interface proc_read(<args>) works)
+// Also see this:
+//	 http://stackoverflow.com/questions/9286303/unable-to-understand-working-of-read-proc-in-linux-kernel-module
+//
+//
+
 // Eric,
 //
 // To test, you might find yourself needing to actually get on the factor. So
@@ -85,8 +94,8 @@ int buffer_length, int *eof, void *data)
 	printk(KERN_INFO LFRNG_LOG_ID "called by gid %u, pid %u\n", curr_task->gid, curr_task->pid);
 
 	// print input arguements
-	printk(KERN_INFO LFRNG_LOG_ID "offset = %u\n", offset);
-	printk(KERN_INFO LFRNG_LOG_ID "buffer_length = %u\n", buffer_length);
+	printk(KERN_INFO LFRNG_LOG_ID "offset = %lu\n", offset);
+	printk(KERN_INFO LFRNG_LOG_ID "buffer_length = %lu\n", buffer_length);
 	
 	if (offset > 0) {
 		/* we have finished to read, return 0 */
