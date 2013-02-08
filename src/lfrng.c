@@ -165,3 +165,4 @@ MODULE_AUTHOR(AUTHORS);
 MODULE_DESCRIPTION(DESC);
 
 // trying to follow the linux conventions
+// vim:tw=80:ts=4:sw=4:noexpandtab
