@@ -59,20 +59,25 @@
 #define AUTHORS "Eric Huang <ehuang3@gatech.edu>, Tim Martin <tim.martin@gatech.edu>"
 #define DESC "A Leapfrog RNG for Georgia Tech's CS3210, Spring 2013"
 
-//proc file struct
+#define PROCFS_MAX_SIZE 1024
+
+// Holds information about the /proc file
 static struct proc_dir_entry *proc_f;
 
+// Buffer used to store character for this module
 static char proc_f_buffer[1024];
+
+// Size of the buffer
 static unsigned long proc_f_buffer_size = 0;
 
-static int lfrng_proc_f_read(char *buffer, char **buffer_location, off_t offset, int buffer_length,
-			     int *eof, void *data)
+static int lfrng_proc_f_read(char *buffer, char **buffer_location, off_t offset, 
+int buffer_length, int *eof, void *data)
 {
 	int ret;
 	
 	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_read called\n");
 	
-	if (off > 0) {
+	if (offset > 0) {
 		/* we have finished to read, return 0 */
 		ret  = 0;
 	} else {
@@ -140,4 +145,3 @@ MODULE_AUTHOR(AUTHORS);
 MODULE_DESCRIPTION(DESC);
 
 // trying to follow the linux conventions
-// vim:tw=80:ts=8:sw=8:noexpandtab:fdm=syntax
