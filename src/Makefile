@@ -12,7 +12,7 @@ PWD=$(shell pwd)
 #default target
 all: obj-m
 
-$(MODULE).o: $(SOURCE)
+$(MODULE).o: $(SOURCE) clean
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 clean: unload
