@@ -5,13 +5,13 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/syscall.h>
 
 static inline void print_ids(void)
 {
-  printf("pgrp = %d, ", (int)getpgrp());
-  printf("pgid = %d, ", (int)getpgid());
-  printf("ppid = %d, ", (int)getppid());
-  printf("pid = %d\n", (int)getpid());
+  //printf("pgrp = %d, ", (int)getpgrp());
+  printf("pid = %d, ", (int)getpid());
+  printf("tid = %d\n", syscall(SYS_gettid));
 }
 
 static inline void r_proc(void)
