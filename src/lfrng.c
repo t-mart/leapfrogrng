@@ -221,14 +221,13 @@ static struct lfrng_thread *get_lfrng_thread(struct task_struct *task)
 	u32 pid = task->pid;
 
 	struct lfrng_thread_group *group = get_lfrng_group(task);
+	struct list_head *i = 0;
+	struct lfrng_thread *thread = 0;
 
 	if(!group) {
 		return 0;
 	}
 
-	struct list_head *i = 0;
-	struct lfrng_thread *thread = 0;
-	
 	list_for_each(i, &(group->head->list)) {
 		thread = list_entry(i, struct lfrng_thread, list);
 		if(pid == thread->id) {
@@ -339,8 +338,6 @@ static void print_thread_groups(void)
 		}
 		printk(")\n");
 	}
-
-	printk("\n");
 }
 
 static int del_thread_group(int id)
