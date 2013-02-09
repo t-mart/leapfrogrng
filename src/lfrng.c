@@ -103,7 +103,7 @@ static const u64 MULTIPLIER = 764261123;
 static const u64 PMOD       = 2147483647;
 static const u64 INCREMENT  = 0;
 
-// Seeds the input lfrng_thread with it's next random number.
+// Seeds the input lfrng_thread with f|n (the nth random number in the sequence).
 static void lfrng_seed(struct lfrng_thread *thread, int seed, int n)
 {
 	u64 last = seed;
@@ -119,7 +119,7 @@ static void lfrng_seed(struct lfrng_thread *thread, int seed, int n)
 }
 
 // Returns the next leapfrog random number for the input lfrng_thread.
-// Also updates the thread's next_rand.
+// Also updates the thread's random number from f|i to f|(i + #num threads).
 //
 // Assume: 1) group->n_threads >= 1
 static int lfrng_rand(struct lfrng_thread *thread,
