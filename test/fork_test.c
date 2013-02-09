@@ -7,10 +7,9 @@ int main()
 {
   printf("tgid = %d\n", (int)getpgrp());
   fork();
-  sleep(1);
   FILE *fp;
   fp = fopen("/proc/lfrng","r");
   fgetc(fp);
-  printf("tid = %d\n", (int)gettid());
+  printf("tid = %d\n", (int)getpid());
   return(0);
 }

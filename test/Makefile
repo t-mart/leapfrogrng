@@ -1,6 +1,6 @@
 #test Makefile
 
-TESTS=open_mpi fork
+TESTS=open_mpi fork pthreads
 
 all: $(TESTS)
 
@@ -13,9 +13,14 @@ openmpi_test: openmpi_test.c
 fork_test: fork_test.c
 	gcc -o fork_test fork_test.c
 
-#redirect so that it's not really piping bc we want to see each output
 fork: fork_test
 	./fork_test
+
+pthreads_test: pthreads_test.c
+	gcc -o pthreads_test pthreads_test.c
+
+pthreads: pthreads_test
+	./pthreads_test
 
 clean:
 	rm *_test
