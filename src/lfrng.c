@@ -90,6 +90,8 @@ struct lfrng_thread {
 
 struct lfrng_thread_group {
 	unsigned int id;
+	int seed;
+	int n_threads;
 	struct lfrng_thread *head;
 	struct list_head list;
 };
