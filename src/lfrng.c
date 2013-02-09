@@ -151,12 +151,11 @@ static const u64 INCREMENT  = 0;
 static u64 power_mod(u64 base, int exp, u64 mod, u64 inc, u64 mult)
 {
 	int i;
-	u64 c = 1;
 	for(i=0; i < exp; i++) {
-		c = (mult*c + inc) % mod;
+		base = (mult*base + inc) % mod;
 	}
 
-	return c;
+	return base;
 }
 
 static int count_group_threads(struct lfrng_thread_group *group)
@@ -395,7 +394,7 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 				//no room
 				rand = -1;
 			}
-		} else if(offset == 0) {
+		} else {
 			lfrng_leapfrog_thread(thread);
 			rand = thread->next_rand;
 		}
