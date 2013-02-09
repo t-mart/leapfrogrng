@@ -1,14 +1,27 @@
 #test Makefile
 
-TESTS=open_mpi fork pthreads
+#TESTS=openmpi fork pthreads single openmpi2
+TESTS=fork pthreads single openmpi2
+
+SOURCES=$(TESTS:=_test.c)
+
+
 
 all: $(TESTS)
 
-open_mpi: openmpi_test
+openmpi: openmpi_test
 	./openmpi_test
 
 openmpi_test: openmpi_test.c
-	gcc -o openmpi_test openmpi_test.c -lgomp
+	gcc -lgomp -o openmpi_test openmpi_test.c
+
+openmpi2: openmpi2_test
+	./openmpi2_test
+
+openmpi2_test: openmpi_test.c
+	gcc -lgomp -o openmpi_test openmpi_test.c
+
+sing
 
 fork_test: fork_test.c
 	gcc -o fork_test fork_test.c
@@ -17,7 +30,7 @@ fork: fork_test
 	./fork_test
 
 pthreads_test: pthreads_test.c
-	gcc -o pthreads_test pthreads_test.c
+	gcc -lpthread -o pthreads_test pthreads_test.c
 
 pthreads: pthreads_test
 	./pthreads_test
