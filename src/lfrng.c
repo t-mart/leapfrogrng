@@ -384,17 +384,20 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	} else {
 		thread = get_lfrng_thread(pid, tgid);
 		threads_in_group = count_group_threads(group);
-		if (threads_in_group < group->n_threads){
-			if (thread==NULL){
-				//thread doesn't exist...make it
+		if (thread==NULL){
+			//thread doesn't exist...make it
+			if (threads_in_group < group->n_threads){
+				//group has room
 				thread = attach_new_thread_to_group(group, pid);
 				lfrng_seed_thread(thread);
+				rand = thread->next_rand;
 			} else {
-				lfrng_leapfrog_thread(thread);
+				//no room
+				rand = -1;
 			}
-			rand = thread->next_rand;
 		} else {
-			rand = -1;
+			lfrng_leapfrog_thread(thread);
+			rand = thread->next_rand;
 		}
 	}
 
