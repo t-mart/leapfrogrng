@@ -84,19 +84,61 @@ static unsigned long proc_f_buffer_size = 0;
 
 struct lfrng_thread {
 	unsigned int id;
-	int last_rand;
+	int next_rand;
 	struct list_head list; //this is a list of other threads in a single thread group
 };
 
 struct lfrng_thread_group {
 	unsigned int id;
-	int seed;
+	u32 seed;
 	int n_threads;
 	struct lfrng_thread *head;
 	struct list_head list;
 };
 
 static struct lfrng_thread_group *seen_tg_list;
+
+// LeapFrog RNG constants
+static const u64 MULTIPLIER = 764261123;
+static const u64 PMOD       = 2147483647;
+static const u64 INCREMENT  = 0;
+
+// Seeds the input lfrng_thread with it's next random number.
+static void lfrng_seed(struct lfrng_thread *thread, int seed, int n)
+{
+	u64 last = seed;
+	u64 curr;
+
+	int i;
+	for(i=0; i < n; i++) {
+		curr = (MULTIPLIER*last + INCREMENT) % PMOD;
+		last = curr;
+	}
+	// handle the case n == 0
+	thread->next_rand = last;
+}
+
+// Returns the next leapfrog random number for the input lfrng_thread.
+// Also updates the thread's next_rand.
+//
+// Assume: 1) group->n_threads >= 1
+static int lfrng_rand(struct lfrng_thread *thread,
+                      struct lfrng_thread_group *group)
+{
+	u64 last = thread->next_rand;
+	u64 curr;
+
+	int i;
+	for(i=0; i < group->n_threads; i++) {
+		curr = (MULTIPLIER*last + INCREMENT) % PMOD;
+		last = curr;
+	}
+
+	last = thread->next_rand;
+	thread->next_rand = curr;
+
+	return last;
+}
 
 static void add_thread_group(struct task_struct *current_task)
 {
