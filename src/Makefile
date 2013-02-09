@@ -3,14 +3,15 @@
 MODULE=lfrng
 SOURCE=$(MODULE).c
 KERNEL_OBJ=$(MODULE).ko
-obj-m=$(MODULE).o
+OUT=$(MODULE).o
+obj-m=$(OUT)
 KDIR=/lib/modules/$(shell uname -r)/build
 PWD=$(shell pwd)
 
 .PHONY: all clean load unload
 
 #default target
-all: obj-m
+all: $(OUT)
 
 $(MODULE).o: $(SOURCE) clean
 	$(MAKE) -C $(KDIR) M=$(PWD) modules

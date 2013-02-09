@@ -59,6 +59,8 @@
 #include <linux/proc_fs.h>   // give us access to proc_fs
 #include <linux/sched.h>     // included for current task ptr
 #include <asm/uaccess.h>     // get/put_use, copy_from/to_user
+#include <linux/list.h>      // simple DLL, see http://isis.poly.edu/kulesh/stuff/src/klist/
+#include <linux/vmalloc.h>   // mem allocations
 
 #define LFRNG_LOG_ID "[lfrng] "
 
@@ -80,50 +82,127 @@ static char proc_f_buffer[1024];
 // Size of the buffer
 static unsigned long proc_f_buffer_size = 0;
 
-static int lfrng_proc_f_read(char *buffer, char **buffer_location, off_t offset, 
-int buffer_length, int *eof, void *data)
+struct lfrng_thread {
+	unsigned int id;
+	int last_rand;
+	struct list_head list; //this is a list of other threads in a single thread group
+};
+
+struct lfrng_thread_group {
+	unsigned int id;
+	struct lfrng_thread *head;
+	struct list_head list;
+};
+
+static struct lfrng_thread_group *seen_tg_list;
+
+static void add_thread_group(struct task_struct *current_task)
+{
+	struct lfrng_thread_group *new = vmalloc(sizeof(struct lfrng_thread_group));
+
+	new->id = current_task->tgid;
+	INIT_LIST_HEAD(&(new->list));
+
+	list_add(&(new->list), &(seen_tg_list->list));
+}
+
+static void print_thread_groups(void)
+{
+	struct list_head *i;
+
+	printk(KERN_INFO LFRNG_LOG_ID "Printing tgids: ");
+
+	list_for_each(i, &(seen_tg_list->list))
+		printk("%d ", list_entry(i, struct lfrng_thread_group, list)->id);
+
+	printk("\n");
+}
+
+static int del_thread_group(int id)
+{
+	struct list_head *i, *tmp;
+	struct lfrng_thread_group *ele;
+
+	list_for_each_safe(i, tmp, &(seen_tg_list->list)){
+		ele = list_entry(i, struct lfrng_thread_group, list);
+		if (ele->id == id){
+			list_del(&(ele->list));
+			vfree(ele);
+			return id;
+		}
+	}
+
+	return 0;
+}
+
+static int del_all_thread_groups(void)
+{
+	struct list_head *i, *tmp;
+	struct lfrng_thread_group *ele;
+	int n = 0;
+
+	list_for_each_safe(i, tmp, &(seen_tg_list->list)){
+		n++;
+		ele = list_entry(i, struct lfrng_thread_group, list);
+		list_del(&(ele->list));
+		vfree(ele);
+	}
+
+	return n;
+}
+
+static int lfrng_proc_f_read(char *buffer, char **buffer_location, off_t offset,
+							 int buffer_length, int *eof, void *data)
 {
 	int ret;
 	struct task_struct *curr_task;
-	
+	int len;
+
 	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_read called\n");
 
 	// Get current task_struct
 	curr_task = current;
-	// print gid and pid
-	printk(KERN_INFO LFRNG_LOG_ID "called by gid %u, pid %u\n", curr_task->gid, curr_task->pid);
+	// print tgid and pid
+	printk(KERN_INFO LFRNG_LOG_ID "called by tgid %u, pid %u\n", curr_task->tgid, curr_task->pid);
 
 	// print input arguements
-	printk(KERN_INFO LFRNG_LOG_ID "offset = %lu\n", offset);
-	printk(KERN_INFO LFRNG_LOG_ID "buffer_length = %lu\n", buffer_length);
-	
+	/*printk(KERN_INFO LFRNG_LOG_ID "offset = %lu\n", offset);*/
+	/*printk(KERN_INFO LFRNG_LOG_ID "buffer_length = %d\n", buffer_length);*/
+
 	if (offset > 0) {
 		/* we have finished to read, return 0 */
 		ret  = 0;
 	} else {
 		/* fill the buffer, return the buffer size */
-		memcpy(buffer, proc_f_buffer, proc_f_buffer_size);
-		ret = proc_f_buffer_size;
+		/*memcpy(buffer, proc_f_buffer, proc_f_buffer_size);*/
+		/*ret = proc_f_buffer_size;*/
 	}
+	/*len = snprintf(buffer+offset, buffer_length, "you are process %d, thread %d\n", curr_task->tgid, curr_task->pid);*/
+	*eof = 1; //signal eof
+	/*ret = len;*/
+	ret  = 0;
+
+	add_thread_group(curr_task);
+	print_thread_groups();
 
 	return ret;
 }
 
 static int lfrng_proc_f_write(struct file *file, const char *buffer,
-unsigned long count, void *data)
+							  unsigned long count, void *data)
 {
 	/* get buffer size */
 	proc_f_buffer_size = count;
 	if (proc_f_buffer_size > PROCFS_MAX_SIZE ) {
 		proc_f_buffer_size = PROCFS_MAX_SIZE;
 	}
-	
+
 	/* write data to the buffer */
 	if ( copy_from_user(proc_f_buffer, buffer, proc_f_buffer_size) ) {
 		return -EFAULT;
 	}
 	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_write called\n");
-	
+
 	return proc_f_buffer_size;
 }
 
@@ -141,10 +220,14 @@ static int __init lfrng_init(void)
 	proc_f->read_proc  = lfrng_proc_f_read;
 	proc_f->write_proc = lfrng_proc_f_write;
 	proc_f->owner      = THIS_MODULE;
-	proc_f->mode       = S_IFREG | S_IRUGO;
+	proc_f->mode       = S_IFREG | S_IRUGO | S_IWUGO;
 	proc_f->uid        = 0;
 	proc_f->gid        = 0;
-	proc_f->size     = 37;
+	proc_f->size       = 1024;
+
+	seen_tg_list = vmalloc(sizeof(struct lfrng_thread_group));
+	seen_tg_list->id=-1;
+	INIT_LIST_HEAD(&(seen_tg_list->list));
 
 	printk(KERN_INFO LFRNG_LOG_ID "/proc/%s created.\n", PROC_F_NAME);
 	return 0;    // Non-zero return means that the module couldn't be loaded.
@@ -152,6 +235,8 @@ static int __init lfrng_init(void)
 
 static void __exit lfrng_exit(void)
 {
+	del_all_thread_groups();
+	vfree(seen_tg_list);
 	printk(KERN_INFO LFRNG_LOG_ID "Removing proc entry...\n");
 	remove_proc_entry(PROC_F_NAME, &proc_root);
 	printk(KERN_INFO LFRNG_LOG_ID "Exited.\n");

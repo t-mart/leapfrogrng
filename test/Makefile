@@ -13,8 +13,9 @@ openmpi_test: openmpi_test.c
 fork_test: fork_test.c
 	gcc -o fork_test fork_test.c
 
-fork:
-	./fork | ./fork | ./fork
+#redirect so that it's not really piping bc we want to see each output
+fork: fork_test
+	./fork_test
 
 clean:
 	rm *_test
