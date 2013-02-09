@@ -173,14 +173,13 @@ static void lfrng_seed(struct lfrng_thread *thread, int seed, int n)
 // Also updates the thread's random number from f|i to f|(i + #num threads).
 //
 // Assumes we have a valid, seeded thread.
-static int lfrng_rand(struct lfrng_thread *thread,
-                      struct lfrng_thread_group *group)
+static int lfrng_rand(struct lfrng_thread *thread)
 {
 	u64 last = thread->next_rand;
 	u64 curr;
 
 	int i;
-	for(i=0; i < group->n_threads; i++) {
+	for(i=0; i < thread->tg->n_threads; i++) {
 		curr = (MULTIPLIER*last + INCREMENT) % PMOD;
 		last = curr;
 	}
@@ -399,6 +398,8 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	// print tgid and pid
 	printk(KERN_INFO LFRNG_LOG_ID "called by tgid %u, pid %u\n", curr_task->tgid, curr_task->pid);
 
+	printk(KERN_INFO LFRNG_LOG_ID "buffer size = %u\n", count);
+
 	add_thread(curr_task);
 	print_thread_groups();
 
@@ -406,20 +407,43 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	// function".
 	if(offset == 0) {
 		// New call to lfrng_read
-		// TODO: call lfrng_rand() into rand
-		lfrng_buffer_size = sprintf(lfrng_buffer, "%d", rand);
+		struct lfrng_thread *thread = get_lfrng_thread(current);
+		struct lfrng_thread_group *group = get_lfrng_group(current);
+
+		if(!group) {
+			// Return -1 to signal error
+			rand = -1;
+		} else if(!thread) {
+			//FIXME: Add thread	
+			//thread = add_thread(current);
+			rand = -1;
+		} 
+
+		if(thread) {
+			// thread exists or was added
+			//rand = lfrng_rand(thread);
+		}
+
+		lfrng_buffer_size = sprintf(lfrng_buffer, "%d", rand) + 1; // count the '\0' char
 	}
+	//printk(KERN_INFO LFRNG_LOG_ID "lfrng_buffer_size = %ld \n", lfrng_buffer_size);
+	//printk(KERN_INFO LFRNG_LOG_ID "offset = %ld \n", offset);
 
 	*start = buffer;
 	// Number of bytes to copy over
-	len = min(lfrng_buffer_size - offset, count);
+	len = min(lfrng_buffer_size - offset, count); 
 	if(len < 0) len = 0;
 
+	//printk(KERN_INFO LFRNG_LOG_ID "len = %d\n", len);
+
 	memcpy(*start, lfrng_buffer+offset, len);
+	//sprintf(buffer, "%d", rand);
 
 	if(offset + len == lfrng_buffer_size) {
 		*peof = 1;
 	}
+	// Assume we've copied everything over
+	*peof = 1;
 
 	return len;
 }
