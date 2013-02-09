@@ -125,7 +125,7 @@ static struct proc_dir_entry *proc_f;
 static char lfrng_buffer[1024];
 
 // Size of the buffer
-static unsigned long lfrng_buffer_size = 0;
+static unsigned int lfrng_buffer_size = 0;
 
 struct lfrng_thread_group;
 
@@ -138,8 +138,8 @@ struct lfrng_thread {
 
 struct lfrng_thread_group {
 	unsigned int id;               // the tgid of this group
-	u32 seed;
-	int n_threads;                 // not defined yet, but it should hold the number of threads in this group?
+	u64 seed;
+	int n_threads;                 // _the user declares_ this number at seed. there might not be that many at head
 	struct lfrng_thread *head;
 	struct list_head list;
 };
@@ -154,41 +154,49 @@ static const u64 MULTIPLIER = 764261123;
 static const u64 PMOD       = 2147483647;
 static const u64 INCREMENT  = 0;
 
-// Seeds the input lfrng_thread with f|n (the nth random number in the sequence).
-static void lfrng_seed(struct lfrng_thread *thread, int seed, int n)
+static u64 power_mod(u64 base, int exp, u64 mod, u64 inc, u64 mult)
 {
-	u64 last = seed;
-	u64 curr;
-
 	int i;
-	for(i=0; i < n; i++) {
-		curr = (MULTIPLIER*last + INCREMENT) % PMOD;
-		last = curr;
+	u64 c = 1;
+	for(i=0; i < exp; i++) {
+		c = (mult*c + inc) % mod;
 	}
-	// handle the case n == 0
-	thread->next_rand = last;
+
+	return c;
+}
+
+static int count_group_threads(struct lfrng_thread_group *group)
+{
+	struct list_head *i;
+	int c = 0;
+
+	list_for_each(i, &(group->head->list)){
+		c++;
+	}
+
+	return c;
+}
+
+#define LFRNG_POWER_MOD(base,exp) power_mod((base),(exp),PMOD,INCREMENT,MULTIPLIER)
+
+#define FIRST_RAND(thread_ptr) LFRNG_POWER_MOD(((thread_ptr)->tg->seed),(count_group_threads((thread_ptr)->tg)+1))
+#define SUBSEQ_RAND(thread_ptr) LFRNG_POWER_MOD(((thread_ptr)->next_rand),((thread_ptr)->tg->n_threads))
+
+// Seeds the input lfrng_thread with f|n (the nth random number in the sequence).
+static u64 lfrng_seed_thread(struct lfrng_thread *thread)
+{
+	return (thread->next_rand = FIRST_RAND(thread));
 }
 
 // Returns the next leapfrog random number for the input lfrng_thread.
 // Also updates the thread's random number from f|i to f|(i + #num threads).
 //
 // Assumes we have a valid, seeded thread.
-static int lfrng_rand(struct lfrng_thread *thread)
+static u64 lfrng_leapfrog_thread(struct lfrng_thread *thread)
 {
-	u64 last = thread->next_rand;
-	u64 curr;
-
-	int i;
-	for(i=0; i < thread->tg->n_threads; i++) {
-		curr = (MULTIPLIER*last + INCREMENT) % PMOD;
-		last = curr;
-	}
-
-	last = thread->next_rand;
-	thread->next_rand = curr;
-
-	return last;
+	return (thread->next_rand = SUBSEQ_RAND(thread));
 }
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // LEAPFROG THREADS
@@ -196,128 +204,103 @@ static int lfrng_rand(struct lfrng_thread *thread)
 
 // Returns the lfrng_thread_group associated with the task (matches tgid) or
 // null.
-static struct lfrng_thread_group *get_lfrng_group(struct task_struct *task)
+static struct lfrng_thread_group *get_lfrng_group(int tgid)
 {
-	u32 tgid = task->tgid;
-	
 	struct list_head *i = 0;
 	struct lfrng_thread_group *group = 0;
 
 	list_for_each(i, &(seen_tg_list->list)) {
 		group = list_entry(i, struct lfrng_thread_group, list);
 		if(tgid == group->id) {
-			break;
+			return group;
 		}
-		group = 0; // Reset to indicate not found
 	}
-
-	return group;
+	return NULL;
 }
 
 // Returns lfrng_thread associated with the task (matches pid & tgid) or null.
-static struct lfrng_thread *get_lfrng_thread(struct task_struct *task)
+static struct lfrng_thread *get_lfrng_thread(int pid, int tgid)
 {
-	u32 pid = task->pid;
-
-	struct lfrng_thread_group *group = get_lfrng_group(task);
+	struct lfrng_thread_group *group = get_lfrng_group(tgid);
 	struct list_head *i = 0;
 	struct lfrng_thread *thread = 0;
 
-	if(!group) {
-		return 0;
+	if(group == NULL) {
+		return NULL;
 	}
 
 	list_for_each(i, &(group->head->list)) {
 		thread = list_entry(i, struct lfrng_thread, list);
 		if(pid == thread->id) {
-			break;
+			return thread;
 		}
-		thread = 0; // Reset to indicate not found
 	}
+
+	return NULL;
+}
+
+//assumes that you've already searched for it with get_lfrng_thread!!!!
+static struct lfrng_thread *
+attach_new_thread_to_group(struct lfrng_thread_group *group, int thread_id)
+{
+	struct lfrng_thread *thread = vmalloc(sizeof(struct lfrng_thread));
+
+	//(group->n_threads - #elements(group->head)
+	//the difference between the users delcaration and the actual number of
+	//threads the group has
+	/*int thread_diff;*/
+
+	thread->id = thread_id;
+	INIT_LIST_HEAD(&(thread->list));
+	list_add_tail(&(thread->list), &(group->head->list));
+	
+	lfrng_seed_thread(thread);
+
+	thread->tg = group;;
 
 	return thread;
 }
 
-/*static void add_thread_group(struct task_struct *current_task)*/
-/*{*/
-	/*struct lfrng_thread_group *new_tg = vmalloc(sizeof(struct lfrng_thread_group));*/
-	/*struct lfrng_thread *new_t = vmalloc(sizeof(struct lfrng_thread));*/
-
-	/*//init the new thread group*/
-	/*new_tg->id = current_task->tgid;*/
-	/*INIT_LIST_HEAD(&(new_tg->list));*/
-
-	/*list_add_tail(&(new_tg->list), &(seen_tg_list->list));*/
-
-	/*//init the new thread*/
-	/*new_t->id = current_task->tid;*/
-	/*INIT_LIST_HEAD(&(new_t->list));*/
-
-	/*list_add_tail(&(new_t->list), &(seen_tg_list->list));*/
-/*}*/
-
-static unsigned int add_thread(struct task_struct *current_task)
+//returns a pointer to the lfrng_thread added, or if it already exists, a
+//pointer to that
+static struct lfrng_thread * add_thread(unsigned int pid, unsigned int tgid)
 {
-	char found_tg = 0, found_t = 0;
-	unsigned int pid = current_task->pid;
-	unsigned int tgid = current_task->tgid;
-	struct list_head *i;
-	struct lfrng_thread_group *tg_iter;
-	struct lfrng_thread *t_iter;
+	struct lfrng_thread_group *group = get_lfrng_group(tgid);
+	struct lfrng_thread *thread;
 
-	//first see if thread group exists
-	list_for_each(i, &(seen_tg_list->list)){
-		tg_iter = list_entry(i, struct lfrng_thread_group, list);
-		if (tg_iter->id == tgid){
-			found_tg = 1;
-			break;
-		}
-	}
-
-	//make one if it doesn't exist
-	if (!found_tg){
-		tg_iter = vmalloc(sizeof(struct lfrng_thread_group));
-
-		tg_iter->id = tgid;
-		INIT_LIST_HEAD(&(tg_iter->list));
-		list_add_tail(&(tg_iter->list), &(seen_tg_list->list));
-
-		tg_iter->head = vmalloc(sizeof(struct lfrng_thread));
-		INIT_LIST_HEAD(&(tg_iter->head->list));
-
-		//this necessarily means we don't have a thread yet either.
-		//so make it now
-		t_iter = vmalloc(sizeof(struct lfrng_thread));
-
-		t_iter->id = pid;
-		INIT_LIST_HEAD(&(t_iter->list));
-		list_add_tail(&(t_iter->list), &(tg_iter->head->list));
-
-		t_iter->tg = tg_iter;
+	if (group == NULL){
+		//your thread group never seeded
+		//bye bye!
+		return NULL;
 	} else {
 		//first see if thread exists
-		list_for_each(i, &(tg_iter->list)){
-			t_iter = list_entry(i, struct lfrng_thread, list);
-			if (t_iter->id == pid){
-				found_t = 1;
-				break;
-			}
+		thread = get_lfrng_thread(pid, tgid);
+
+		if (thread == NULL){
+			return attach_new_thread_to_group(group, pid);
 		}
 
-		if (!found_t){
-			t_iter = vmalloc(sizeof(struct lfrng_thread));
+		return thread;
+	}
+}
 
-			t_iter->id = pid;
-			INIT_LIST_HEAD(&(t_iter->list));
-			list_add_tail(&(t_iter->list), &(tg_iter->head->list));
+static struct lfrng_thread_group * create_thread_group(int tgid)
+{
+	struct lfrng_thread_group *group = get_lfrng_group(tgid);
 
-			t_iter->tg = tg_iter;
-		}
+	if (group == NULL){
+		//make one
+		group = vmalloc(sizeof(struct lfrng_thread_group));
+
+		group->id = tgid;
+		INIT_LIST_HEAD(&(group->list));
+		list_add_tail(&(group->list), &(seen_tg_list->list));
+
+		group->head = vmalloc(sizeof(struct lfrng_thread));
+		INIT_LIST_HEAD(&(group->head->list));
 	}
 
-	//might be a good idea to return something useful here like the tid,tgid or
-	//whether something was added or not
-	return 0;
+	return group;
 }
 
 static void print_thread_groups(void)
@@ -383,32 +366,29 @@ static int del_all_thread_groups(void)
 	return n;
 }
 
-// 
 static int lfrng_read(char *buffer, char **start, off_t offset,
 							 int count, int *peof, void *dat)
 {
-	struct task_struct *curr_task;
+	unsigned int tgid = current->tgid, pid = current->pid;
 	int rand;
 	int len;
 
 	printk(KERN_INFO LFRNG_LOG_ID "lfrng_read called\n");
 
-	// Get current task_struct
-	curr_task = current;
 	// print tgid and pid
-	printk(KERN_INFO LFRNG_LOG_ID "called by tgid %u, pid %u\n", curr_task->tgid, curr_task->pid);
+	printk(KERN_INFO LFRNG_LOG_ID "called by tgid %u, pid %u\n", tgid, pid);
 
 	printk(KERN_INFO LFRNG_LOG_ID "buffer size = %u\n", count);
 
-	add_thread(curr_task);
+	/*add_thread(curr_task);*/
 	print_thread_groups();
 
 	// Adapted from method 2) in <fs/proc/generic.c>, "How to be a proc read
 	// function".
 	if(offset == 0) {
 		// New call to lfrng_read
-		struct lfrng_thread *thread = get_lfrng_thread(current);
-		struct lfrng_thread_group *group = get_lfrng_group(current);
+		struct lfrng_thread *thread = add_thread(pid, tgid);
+		struct lfrng_thread_group *group = thread->tg;
 
 		if(!group) {
 			// Return -1 to signal error
@@ -428,10 +408,11 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	}
 	//printk(KERN_INFO LFRNG_LOG_ID "lfrng_buffer_size = %ld \n", lfrng_buffer_size);
 	//printk(KERN_INFO LFRNG_LOG_ID "offset = %ld \n", offset);
+	printk(KERN_INFO LFRNG_LOG_ID "giving this back: %s", lfrng_buffer);
 
 	*start = buffer;
 	// Number of bytes to copy over
-	len = min(lfrng_buffer_size - offset, count); 
+	len = min((int)lfrng_buffer_size - (int)offset, count);
 	if(len < 0) len = 0;
 
 	//printk(KERN_INFO LFRNG_LOG_ID "len = %d\n", len);
@@ -444,6 +425,8 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	}
 	// Assume we've copied everything over
 	*peof = 1;
+
+	print_thread_groups();
 
 	return len;
 }
