@@ -10,7 +10,7 @@
 static inline void print_ids(void)
 {
   //printf("pgrp = %d, ", (int)getpgrp());
-  printf("pid = %d, ", (int)getpid());
+  printf("tgid = %d, ", (int)getpid());
   printf("tid = %d\n", syscall(SYS_gettid));
 }
 
