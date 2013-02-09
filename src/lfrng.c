@@ -195,7 +195,50 @@ static int lfrng_rand(struct lfrng_thread *thread,
 // LEAPFROG THREADS
 ///////////////////////////////////////////////////////////////////////////////
 
-//static lfrng_thread *
+// Returns the lfrng_thread_group associated with the task (matches tgid) or
+// null.
+static lfrng_thread_group *get_lfrng_group(struct task_struct *task)
+{
+	u32 tgid = task->tgid;
+	
+	struct list_head *i = 0;
+	struct lfrng_thread_group *group = 0;
+
+	list_for_each(i, &(seen_tg_list->list)) {
+		group = list_entry(i, struct lfrng_thread_group, list);
+		if(tgid == group->id) {
+			break;
+		}
+		group = 0; // Reset to indicate not found
+	}
+
+	return group;
+}
+
+// Returns lfrng_thread associated with the task (matches pid & tgid) or null.
+static lfrng_thread *get_lfrng_thread(struct task_struct *task)
+{
+	u32 pid = task->pid;
+
+	struct lfrng_thread_group *group = get_lfrng_group(task);
+
+	if(!group) {
+		return 0;
+	}
+
+	struct list_head *i = 0;
+	struct lfrng_thread *thread = 0;
+	
+	list_for_each(i, &(group->head->list)) {
+		thread = list_entry(i, struct lfrng_thread, list);
+		if(pid == thread->id) {
+			break;
+		}
+		thread = 0; // Reset to indicate not found
+	}
+
+	return thread;
+}
 
 /*static void add_thread_group(struct task_struct *current_task)*/
 /*{*/
