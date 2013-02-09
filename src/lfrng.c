@@ -122,10 +122,10 @@
 static struct proc_dir_entry *proc_f;
 
 // Buffer used to store character for this module
-static char proc_f_buffer[1024];
+static char lfrng_buffer[1024];
 
 // Size of the buffer
-static unsigned long proc_f_buffer_size = 0;
+static unsigned long lfrng_buffer_size = 0;
 
 struct lfrng_thread_group;
 
@@ -146,6 +146,9 @@ struct lfrng_thread_group {
 
 static struct lfrng_thread_group *seen_tg_list;
 
+///////////////////////////////////////////////////////////////////////////////
+// LEAPFROG RNG
+///////////////////////////////////////////////////////////////////////////////
 // LeapFrog RNG constants
 static const u64 MULTIPLIER = 764261123;
 static const u64 PMOD       = 2147483647;
@@ -169,7 +172,7 @@ static void lfrng_seed(struct lfrng_thread *thread, int seed, int n)
 // Returns the next leapfrog random number for the input lfrng_thread.
 // Also updates the thread's random number from f|i to f|(i + #num threads).
 //
-// Assume: 1) group->n_threads >= 1
+// Assumes we have a valid, seeded thread.
 static int lfrng_rand(struct lfrng_thread *thread,
                       struct lfrng_thread_group *group)
 {
@@ -187,6 +190,12 @@ static int lfrng_rand(struct lfrng_thread *thread,
 
 	return last;
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// LEAPFROG THREADS
+///////////////////////////////////////////////////////////////////////////////
+
+//static lfrng_thread *
 
 /*static void add_thread_group(struct task_struct *current_task)*/
 /*{*/
@@ -335,59 +344,62 @@ static int del_all_thread_groups(void)
 	return n;
 }
 
-static int lfrng_proc_f_read(char *buffer, char **buffer_location, off_t offset,
-							 int buffer_length, int *eof, void *data)
+// 
+static int lfrng_read(char *buffer, char **start, off_t offset,
+							 int count, int *peof, void *dat)
 {
-	int ret;
 	struct task_struct *curr_task;
+	int rand;
 	int len;
 
-	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_read called\n");
+	printk(KERN_INFO LFRNG_LOG_ID "lfrng_read called\n");
 
 	// Get current task_struct
 	curr_task = current;
 	// print tgid and pid
 	printk(KERN_INFO LFRNG_LOG_ID "called by tgid %u, pid %u\n", curr_task->tgid, curr_task->pid);
 
-	// print input arguements
-	/*printk(KERN_INFO LFRNG_LOG_ID "offset = %lu\n", offset);*/
-	/*printk(KERN_INFO LFRNG_LOG_ID "buffer_length = %d\n", buffer_length);*/
-
-	if (offset > 0) {
-		/* we have finished to read, return 0 */
-		ret  = 0;
-	} else {
-		/* fill the buffer, return the buffer size */
-		/*memcpy(buffer, proc_f_buffer, proc_f_buffer_size);*/
-		/*ret = proc_f_buffer_size;*/
-	}
-	/*len = snprintf(buffer+offset, buffer_length, "you are process %d, thread %d\n", curr_task->tgid, curr_task->pid);*/
-	*eof = 1; //signal eof
-	/*ret = len;*/
-	ret  = 0;
-
 	add_thread(curr_task);
 	print_thread_groups();
 
-	return ret;
+	// Adapted from method 2) in <fs/proc/generic.c>, "How to be a proc read
+	// function".
+	if(offset == 0) {
+		// New call to lfrng_read
+		// TODO: call lfrng_rand() into rand
+		lfrng_buffer_size = sprintf(lfrng_buffer, "%d", rand);
+	}
+
+	*start = buffer;
+	// Number of bytes to copy over
+	len = min(lfrng_buffer_size - offset, count);
+	if(len < 0) len = 0;
+
+	memcpy(*start, lfrng_buffer+offset, len);
+
+	if(offset + len == lfrng_buffer_size) {
+		*peof = 1;
+	}
+
+	return len;
 }
 
-static int lfrng_proc_f_write(struct file *file, const char *buffer,
+static int lfrng_write(struct file *file, const char *buffer,
 							  unsigned long count, void *data)
 {
 	/* get buffer size */
-	proc_f_buffer_size = count;
-	if (proc_f_buffer_size > PROCFS_MAX_SIZE ) {
-		proc_f_buffer_size = PROCFS_MAX_SIZE;
+	lfrng_buffer_size = count;
+	if (lfrng_buffer_size > PROCFS_MAX_SIZE ) {
+		lfrng_buffer_size = PROCFS_MAX_SIZE;
 	}
 
 	/* write data to the buffer */
-	if ( copy_from_user(proc_f_buffer, buffer, proc_f_buffer_size) ) {
+	if ( copy_from_user(lfrng_buffer, buffer, lfrng_buffer_size) ) {
 		return -EFAULT;
 	}
 	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_write called\n");
 
-	return proc_f_buffer_size;
+	return lfrng_buffer_size;
 }
 
 static int __init lfrng_init(void)
@@ -401,8 +413,8 @@ static int __init lfrng_init(void)
 		return -ENOMEM;
 	}
 
-	proc_f->read_proc  = lfrng_proc_f_read;
-	proc_f->write_proc = lfrng_proc_f_write;
+	proc_f->read_proc  = lfrng_read;
+	proc_f->write_proc = lfrng_write;
 	proc_f->owner      = THIS_MODULE;
 	proc_f->mode       = S_IFREG | S_IRUGO | S_IWUGO;
 	proc_f->uid        = 0;
