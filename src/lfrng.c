@@ -121,12 +121,6 @@
 // Holds information about the /proc file
 static struct proc_dir_entry *proc_f;
 
-// Buffer used to store character for this module
-static char lfrng_buffer[1024];
-
-// Size of the buffer
-static unsigned int lfrng_buffer_size = 0;
-
 struct lfrng_thread_group;
 
 struct lfrng_thread {
@@ -374,46 +368,35 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	int len;
 	struct lfrng_thread *thread;
 	struct lfrng_thread_group *group;
+	int threads_in_group;
+
+	unsigned int lfrng_buffer_size = 1024;
+	char lfrng_buffer[lfrng_buffer_size];
 
 	printk(KERN_INFO LFRNG_LOG_ID "lfrng_read called\n");
-
-	// print tgid and pid
 	printk(KERN_INFO LFRNG_LOG_ID "called by tgid %u, pid %u\n", tgid, pid);
+	/*printk(KERN_INFO LFRNG_LOG_ID "buffer size = %u\n", count);*/
 
-	printk(KERN_INFO LFRNG_LOG_ID "buffer size = %u\n", count);
-
-	/*add_thread(curr_task);*/
-	/*print_thread_groups();*/
-
-	// Adapted from method 2) in <fs/proc/generic.c>, "How to be a proc read
-	// function".
-	if(offset == 0) {
-		// New call to lfrng_read
-		thread = add_thread(pid, tgid);
-		if (thread==NULL){
-			printk(KERN_INFO LFRNG_LOG_ID "pid %u called without a seed from his tgid (%u)!\n", pid, tgid);
-		}
-		group = thread->tg;
-
-		if(!group) {
-			// Return -1 to signal error
+	group = get_lfrng_group(tgid);
+	if (group==NULL){
+		printk(KERN_INFO LFRNG_LOG_ID "pid %u called without a seed from his tgid (%u)!\n", pid, tgid);
+		rand = -1;
+	} else {
+		thread = get_lfrng_thread(pid, tgid);
+		threads_in_group = count_group_threads(group);
+		if (threads_in_group < group->n_threads){
+			if (thread==NULL){
+				//thread doesn't exist...make it
+				thread = attach_new_thread_to_group(group, pid);
+				lfrng_seed_thread(thread);
+			} else {
+				lfrng_leapfrog_thread(thread);
+			}
+			rand = thread->next_rand;
+		} else {
 			rand = -1;
-		} else if(!thread) {
-			//FIXME: Add thread	
-			//thread = add_thread(current);
-			rand = -1;
-		} 
-
-		if(thread) {
-			// thread exists or was added
-			//rand = lfrng_rand(thread);
 		}
-
-		lfrng_buffer_size = sprintf(lfrng_buffer, "%d", rand) + 1; // count the '\0' char
 	}
-	//printk(KERN_INFO LFRNG_LOG_ID "lfrng_buffer_size = %ld \n", lfrng_buffer_size);
-	//printk(KERN_INFO LFRNG_LOG_ID "offset = %ld \n", offset);
-	printk(KERN_INFO LFRNG_LOG_ID "giving this back: %s", lfrng_buffer);
 
 	*start = buffer;
 	// Number of bytes to copy over
@@ -490,7 +473,6 @@ static int __init lfrng_init(void)
 	proc_f->size       = 1024;
 
 	seen_tg_list = vmalloc(sizeof(struct lfrng_thread_group));
-	/*seen_tg_list->id=-1;*/
 	INIT_LIST_HEAD(&(seen_tg_list->list));
 
 	printk(KERN_INFO LFRNG_LOG_ID "/proc/%s created.\n", PROC_F_NAME);
