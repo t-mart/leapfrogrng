@@ -372,6 +372,8 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	unsigned int tgid = current->tgid, pid = current->pid;
 	int rand;
 	int len;
+	struct lfrng_thread *thread;
+	struct lfrng_thread_group *group;
 
 	printk(KERN_INFO LFRNG_LOG_ID "lfrng_read called\n");
 
@@ -381,14 +383,17 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	printk(KERN_INFO LFRNG_LOG_ID "buffer size = %u\n", count);
 
 	/*add_thread(curr_task);*/
-	print_thread_groups();
+	/*print_thread_groups();*/
 
 	// Adapted from method 2) in <fs/proc/generic.c>, "How to be a proc read
 	// function".
 	if(offset == 0) {
 		// New call to lfrng_read
-		struct lfrng_thread *thread = add_thread(pid, tgid);
-		struct lfrng_thread_group *group = thread->tg;
+		thread = add_thread(pid, tgid);
+		if (thread==NULL){
+			printk(KERN_INFO LFRNG_LOG_ID "pid %u called without a seed from his tgid (%u)!\n", pid, tgid);
+		}
+		group = thread->tg;
 
 		if(!group) {
 			// Return -1 to signal error
@@ -426,7 +431,7 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 	// Assume we've copied everything over
 	*peof = 1;
 
-	print_thread_groups();
+	/*print_thread_groups();*/
 
 	return len;
 }
@@ -434,19 +439,35 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 static int lfrng_write(struct file *file, const char *buffer,
 							  unsigned long count, void *data)
 {
-	/* get buffer size */
-	lfrng_buffer_size = count;
-	if (lfrng_buffer_size > PROCFS_MAX_SIZE ) {
-		lfrng_buffer_size = PROCFS_MAX_SIZE;
-	}
+	int n_threads;
+	unsigned long long seed;
+	unsigned long b_size = 1024;
+	char our_buffer[b_size];
 
+	unsigned long len = min(count,b_size);
+
+	struct lfrng_thread_group * group;
+
+	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_write called\n");
 	/* write data to the buffer */
-	if ( copy_from_user(lfrng_buffer, buffer, lfrng_buffer_size) ) {
+	if ( copy_from_user(our_buffer, buffer, len) ) {
+		printk(KERN_INFO LFRNG_LOG_ID "some error took place while reading the write buffer\n");
 		return -EFAULT;
 	}
-	printk(KERN_INFO LFRNG_LOG_ID "lfrng_proc_f_write called\n");
 
-	return lfrng_buffer_size;
+	our_buffer[len - 1] = '\0';
+
+	printk(KERN_INFO LFRNG_LOG_ID "data (tgid=%u,pid=%u): %s\n",current->tgid, current->pid, our_buffer);
+	sscanf(our_buffer, "%llu %d", &seed, &n_threads);
+	printk(KERN_INFO LFRNG_LOG_ID "parsed: seed:%llu, n_threads:%d\n", seed, n_threads);
+
+	group = create_thread_group(current->tgid);
+	group->seed = seed;
+	group->n_threads = n_threads;
+
+	print_thread_groups();
+
+	return len;
 }
 
 static int __init lfrng_init(void)
