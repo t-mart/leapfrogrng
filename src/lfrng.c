@@ -1,3 +1,48 @@
+// Eric,
+//
+// the data structure works now. there's a list of thread groups, and each
+// thread group contains a list of threads
+//
+// you can test it by cat /proc/lfrng. or make test (runs thru a fork, openmpi,
+// and pthreads that all attempt to read from /proc/lfrng, but as we said, fork
+// doesn't matter). then look at /var/log/messages where it prints tgids. tgids
+// are outside the parentheses, while pid's are inside.
+//
+// what isn't working is:
+//
+// 	thread recognition. right now, threads only get added to the pool when
+// 	they read from /proc/lfrng (this decision was completely arbitrary).
+// 	seeing the threads available  is important bc threads need to get their
+// 	first random number. I'm thinking about using *next_thread(const struct task_struct *p)
+// 	http://lxr.linux.no/#linux+v2.6.24.6/include/linux/sched.h#L1743 use of that
+// 	function requires that all threads are already initialized, so perhaps the
+// 	first step for users is to create all threads, get one to seed, and then
+// 	they can leapfrog.
+//
+// 	writing seeds/reading random numbers. there's no mechanism right now to
+// 	look for seeds in write_proc, nor give random numbers to readers in
+// 	read_proc.
+//
+// 	there's no removal of thread/thread_groups that might be dead from the pool.
+// 	(not a huge problem, everything's still freed correctly on module exit, but
+// 	there might be a lot of cruft given enough time. practically, this code only
+// 	has to survive a demo).
+//
+// 	we need to start writing a man document the describe exactly what the code
+// 	can/can't do
+//
+// 	i've written tests to read from /proc/lfrng as said, but these don't parse
+// 	any results (i.e. the random numbers). we need to test that 1) threads are
+// 	getting output from lfrng and 2) that the output follows leapfrog
+// 	algorithm.
+//
+// 	haven't tested if the proc recognizes a thread it's already talked to (so it
+// 	knows to just give the next number)
+//
+// do your best. and it'd be really nice if you were available to talk before
+// turn-in.
+
+//
 // Tim,
 //
 // grep <kernel-src>/fs/proc/generic.c for "How to be a proc read function"
@@ -82,16 +127,19 @@ static char proc_f_buffer[1024];
 // Size of the buffer
 static unsigned long proc_f_buffer_size = 0;
 
+struct lfrng_thread_group;
+
 struct lfrng_thread {
-	unsigned int id;
+	unsigned int id;               // the pid of the thread
 	int next_rand;
-	struct list_head list; //this is a list of other threads in a single thread group
+	struct lfrng_thread_group *tg; // the thread group this thread belongs to
+	struct list_head list;         // this is a list of other threads in a single thread group
 };
 
 struct lfrng_thread_group {
-	unsigned int id;
+	unsigned int id;               // the tgid of this group
 	u32 seed;
-	int n_threads;
+	int n_threads;                 // not defined yet, but it should hold the number of threads in this group?
 	struct lfrng_thread *head;
 	struct list_head list;
 };
@@ -140,24 +188,105 @@ static int lfrng_rand(struct lfrng_thread *thread,
 	return last;
 }
 
-static void add_thread_group(struct task_struct *current_task)
+/*static void add_thread_group(struct task_struct *current_task)*/
+/*{*/
+	/*struct lfrng_thread_group *new_tg = vmalloc(sizeof(struct lfrng_thread_group));*/
+	/*struct lfrng_thread *new_t = vmalloc(sizeof(struct lfrng_thread));*/
+
+	/*//init the new thread group*/
+	/*new_tg->id = current_task->tgid;*/
+	/*INIT_LIST_HEAD(&(new_tg->list));*/
+
+	/*list_add_tail(&(new_tg->list), &(seen_tg_list->list));*/
+
+	/*//init the new thread*/
+	/*new_t->id = current_task->tid;*/
+	/*INIT_LIST_HEAD(&(new_t->list));*/
+
+	/*list_add_tail(&(new_t->list), &(seen_tg_list->list));*/
+/*}*/
+
+static unsigned int add_thread(struct task_struct *current_task)
 {
-	struct lfrng_thread_group *new = vmalloc(sizeof(struct lfrng_thread_group));
+	char found_tg = 0, found_t = 0;
+	unsigned int pid = current_task->pid;
+	unsigned int tgid = current_task->tgid;
+	struct list_head *i;
+	struct lfrng_thread_group *tg_iter;
+	struct lfrng_thread *t_iter;
 
-	new->id = current_task->tgid;
-	INIT_LIST_HEAD(&(new->list));
+	//first see if thread group exists
+	list_for_each(i, &(seen_tg_list->list)){
+		tg_iter = list_entry(i, struct lfrng_thread_group, list);
+		if (tg_iter->id == tgid){
+			found_tg = 1;
+			break;
+		}
+	}
 
-	list_add(&(new->list), &(seen_tg_list->list));
+	//make one if it doesn't exist
+	if (!found_tg){
+		tg_iter = vmalloc(sizeof(struct lfrng_thread_group));
+
+		tg_iter->id = tgid;
+		INIT_LIST_HEAD(&(tg_iter->list));
+		list_add_tail(&(tg_iter->list), &(seen_tg_list->list));
+
+		tg_iter->head = vmalloc(sizeof(struct lfrng_thread));
+		INIT_LIST_HEAD(&(tg_iter->head->list));
+
+		//this necessarily means we don't have a thread yet either.
+		//so make it now
+		t_iter = vmalloc(sizeof(struct lfrng_thread));
+
+		t_iter->id = pid;
+		INIT_LIST_HEAD(&(t_iter->list));
+		list_add_tail(&(t_iter->list), &(tg_iter->head->list));
+
+		t_iter->tg = tg_iter;
+	} else {
+		//first see if thread exists
+		list_for_each(i, &(tg_iter->list)){
+			t_iter = list_entry(i, struct lfrng_thread, list);
+			if (t_iter->id == pid){
+				found_t = 1;
+				break;
+			}
+		}
+
+		if (!found_t){
+			t_iter = vmalloc(sizeof(struct lfrng_thread));
+
+			t_iter->id = pid;
+			INIT_LIST_HEAD(&(t_iter->list));
+			list_add_tail(&(t_iter->list), &(tg_iter->head->list));
+
+			t_iter->tg = tg_iter;
+		}
+	}
+
+	//might be a good idea to return something useful here like the tid,tgid or
+	//whether something was added or not
+	return 0;
 }
 
 static void print_thread_groups(void)
 {
-	struct list_head *i;
+	struct list_head *i, *j;
+	struct lfrng_thread_group *tg_iter;
+	struct lfrng_thread *t_iter;
 
-	printk(KERN_INFO LFRNG_LOG_ID "Printing tgids: ");
+	printk(KERN_INFO LFRNG_LOG_ID "Printing tgids:\n");
 
-	list_for_each(i, &(seen_tg_list->list))
-		printk("%d ", list_entry(i, struct lfrng_thread_group, list)->id);
+	list_for_each(i, &(seen_tg_list->list)){
+		tg_iter = list_entry(i, struct lfrng_thread_group, list);
+		printk("\t%d ( ", tg_iter->id);
+		list_for_each(j, &(tg_iter->head->list)){
+			t_iter = list_entry(j, struct lfrng_thread, list);
+			printk("%d ", t_iter->id);
+		}
+		printk(")\n");
+	}
 
 	printk("\n");
 }
@@ -181,15 +310,26 @@ static int del_thread_group(int id)
 
 static int del_all_thread_groups(void)
 {
-	struct list_head *i, *tmp;
-	struct lfrng_thread_group *ele;
+	struct list_head *i, *j, *tmp_i, *tmp_j;
+	struct lfrng_thread_group *tg_iter;
+	struct lfrng_thread *t_iter;
+
 	int n = 0;
 
-	list_for_each_safe(i, tmp, &(seen_tg_list->list)){
+	list_for_each_safe(i, tmp_i, &(seen_tg_list->list)){
 		n++;
-		ele = list_entry(i, struct lfrng_thread_group, list);
-		list_del(&(ele->list));
-		vfree(ele);
+		tg_iter = list_entry(i, struct lfrng_thread_group, list);
+
+		list_for_each_safe(j, tmp_j, &(tg_iter->head->list)){
+			t_iter = list_entry(j, struct lfrng_thread, list);
+			list_del(&(t_iter->list));
+			vfree(t_iter);
+		}
+
+		vfree(&(tg_iter->head->list));
+
+		list_del(&(tg_iter->list));
+		vfree(tg_iter);
 	}
 
 	return n;
@@ -226,7 +366,7 @@ static int lfrng_proc_f_read(char *buffer, char **buffer_location, off_t offset,
 	/*ret = len;*/
 	ret  = 0;
 
-	add_thread_group(curr_task);
+	add_thread(curr_task);
 	print_thread_groups();
 
 	return ret;
@@ -270,7 +410,7 @@ static int __init lfrng_init(void)
 	proc_f->size       = 1024;
 
 	seen_tg_list = vmalloc(sizeof(struct lfrng_thread_group));
-	seen_tg_list->id=-1;
+	/*seen_tg_list->id=-1;*/
 	INIT_LIST_HEAD(&(seen_tg_list->list));
 
 	printk(KERN_INFO LFRNG_LOG_ID "/proc/%s created.\n", PROC_F_NAME);
