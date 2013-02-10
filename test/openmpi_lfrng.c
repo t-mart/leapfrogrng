@@ -120,7 +120,7 @@ void seed(unsigned long long iseed, double low_in, double hi_in)
 
 /*  This ends the reference openMP implementation.  The following is the core testing loop. */
 
-int tests[6]={2,3,4,5,6,10};
+int tests[1]={10};
 
 int main(int argc, char **argv) {
   double baseref[120];
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
     baseref[i] = myrandom();
   }
 
-  for (j=0; j<6; j++) {
+  for (j=0; j<1; j++) {
     int numthreads = tests[j];
     double sum;
 
