@@ -395,7 +395,7 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 				//no room
 				rand = -1;
 			}
-		} else {
+		} else if(offset == 0) {
 			lfrng_leapfrog_thread(thread);
 			rand = thread->next_rand;
 		}
