@@ -398,6 +398,11 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 		}
 	}
 
+	if(offset == 0) {
+		// New call to lfrng_read
+		lfrng_buffer_size = sprintf(lfrng_buffer, "%d", rand);
+	}
+
 	*start = buffer;
 	// Number of bytes to copy over
 	len = min((int)lfrng_buffer_size - (int)offset, count);
