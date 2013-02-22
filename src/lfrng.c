@@ -1,93 +1,6 @@
-// Eric,
+//if rsyslogd stops working run:
+//sudo cp rsyslog.conf /etc/rsyslog.conf && sudo /etc/init.d/rsyslog restart
 //
-// the data structure works now. there's a list of thread groups, and each
-// thread group contains a list of threads
-//
-// you can test it by cat /proc/lfrng. or make test (runs thru a fork, openmpi,
-// and pthreads that all attempt to read from /proc/lfrng, but as we said, fork
-// doesn't matter). then look at /var/log/messages where it prints tgids. tgids
-// are outside the parentheses, while pid's are inside.
-//
-// what isn't working is:
-//
-// 	thread recognition. right now, threads only get added to the pool when
-// 	they read from /proc/lfrng (this decision was completely arbitrary).
-// 	seeing the threads available  is important bc threads need to get their
-// 	first random number. I'm thinking about using *next_thread(const struct task_struct *p)
-// 	http://lxr.linux.no/#linux+v2.6.24.6/include/linux/sched.h#L1743 use of that
-// 	function requires that all threads are already initialized, so perhaps the
-// 	first step for users is to create all threads, get one to seed, and then
-// 	they can leapfrog.
-//
-// 	writing seeds/reading random numbers. there's no mechanism right now to
-// 	look for seeds in write_proc, nor give random numbers to readers in
-// 	read_proc.
-//
-// 	there's no removal of thread/thread_groups that might be dead from the pool.
-// 	(not a huge problem, everything's still freed correctly on module exit, but
-// 	there might be a lot of cruft given enough time. practically, this code only
-// 	has to survive a demo).
-//
-// 	we need to start writing a man document the describe exactly what the code
-// 	can/can't do
-//
-// 	i've written tests to read from /proc/lfrng as said, but these don't parse
-// 	any results (i.e. the random numbers). we need to test that 1) threads are
-// 	getting output from lfrng and 2) that the output follows leapfrog
-// 	algorithm.
-//
-// 	haven't tested if the proc recognizes a thread it's already talked to (so it
-// 	knows to just give the next number)
-//
-// do your best. and it'd be really nice if you were available to talk before
-// turn-in.
-
-//
-// Tim,
-//
-// grep <kernel-src>/fs/proc/generic.c for "How to be a proc read function"
-//	 (It explains how to interface proc_read(<args>) works)
-// Also see this:
-//	 http://stackoverflow.com/questions/9286303/unable-to-understand-working-of-read-proc-in-linux-kernel-module
-//
-//
-
-// Eric,
-//
-// To test, you might find yourself needing to actually get on the factor. So
-// I put together some steps and documented around the project where I could:
-//   follow instructions in ssh_config_entry
-//   make tunnel (in the root Makefile, not src's)
-//   <your_vnc_viewer> localhost:4 (i use tightvnc from my distro's repos)
-//
-// If you want to get a shell without ssh (easier imo),
-//   (make tunnel if not already done)
-//   ssh <username>@localhost:60022
-//
-// To get this code to the system, I made a git repo here which pulls from
-// github.com, but that might by a little tricky (SSH keys). Use SCP for a quick
-// and dirty solution.
-//
-// Use make load or make unload respectively. I put targets in both Makefile and
-// src/Makefile. Gotta be root.
-//
-// To see the kernel messages,
-//   sudo tail -f /var/log/messages
-// (or run without the -f flag to just print the last few lines)
-//
-// This pages seem like it might come in handy:
-//   http://www.tldp.org/LDP/lkmpg/2.6/html/lkmpg.html
-//   newdata.box.sk/raven/lkm.html (search for proc_fs)
-//
-// See you in class.
-//
-// -Tim
-
-// Some snippets taken from:
-//   http://blog.markloiseau.com/2012/04/hello-world-loadable-kernel-module-tutorial/
-//   http://www.tldp.org/LDP/lkmpg/2.6/html/lkmpg.html
-//   http://code.google.com/p/batterymine/wiki/Understanding_of_Procfs
-
 // Defining __KERNEL__ and MODULE allows us to access kernel-level code not
 // usually available to userspace programs.
 #undef __KERNEL__
@@ -125,7 +38,7 @@ struct lfrng_thread_group;
 
 struct lfrng_thread {
 	unsigned int id;               // the pid of the thread
-	int next_rand;
+	long long unsigned int next_rand;
 	struct lfrng_thread_group *tg; // the thread group this thread belongs to
 	struct list_head list;         // this is a list of other threads in a single thread group
 };
@@ -173,7 +86,7 @@ static int count_group_threads(struct lfrng_thread_group *group)
 #define LFRNG_POWER_MOD(base,exp) power_mod((base),(exp),PMOD,INCREMENT,MULTIPLIER)
 
 #define FIRST_RAND(thread_ptr) LFRNG_POWER_MOD(((thread_ptr)->tg->seed),(count_group_threads((thread_ptr)->tg)+1))
-#define SUBSEQ_RAND(thread_ptr) LFRNG_POWER_MOD(((thread_ptr)->next_rand),((thread_ptr)->tg->n_threads))
+#define SUBSEQ_RAND(thread_ptr) LFRNG_POWER_MOD(((thread_ptr)->next_rand),(u64)((thread_ptr)->tg->n_threads))
 
 // Seeds the input lfrng_thread with f|n (the nth random number in the sequence).
 static u64 lfrng_seed_thread(struct lfrng_thread *thread)
@@ -359,26 +272,15 @@ static int del_all_thread_groups(void)
 	return n;
 }
 
-static int lfrng_read(char *buffer, char **start, off_t offset,
-							 int count, int *peof, void *dat)
+static long long unsigned int get_next_rand(int pid, int tgid)
 {
-	unsigned int tgid = current->tgid, pid = current->pid;
-	int rand;
-	int len;
+	int rand, threads_in_group;
 	struct lfrng_thread *thread;
 	struct lfrng_thread_group *group;
-	int threads_in_group;
-
-	unsigned int lfrng_buffer_size = 1024;
-	char lfrng_buffer[lfrng_buffer_size];
-
-	printk(KERN_INFO LFRNG_LOG_ID "lfrng_read called\n");
-	printk(KERN_INFO LFRNG_LOG_ID "called by tgid %u, pid %u\n", tgid, pid);
-	/*printk(KERN_INFO LFRNG_LOG_ID "buffer size = %u\n", count);*/
 
 	group = get_lfrng_group(tgid);
 	if (group==NULL){
-		printk(KERN_INFO LFRNG_LOG_ID "pid %u called without a seed from his tgid (%u)!\n", pid, tgid);
+		/*printk(KERN_INFO LFRNG_LOG_ID "pid %u called without a seed from his tgid (%u)!\n", pid, tgid);*/
 		rand = -1;
 	} else {
 		thread = get_lfrng_thread(pid, tgid);
@@ -388,7 +290,7 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 			if (threads_in_group < group->n_threads){
 				//group has room
 				thread = attach_new_thread_to_group(group, pid);
-				lfrng_seed_thread(thread);
+				/*lfrng_seed_thread(thread);*/
 				rand = thread->next_rand;
 			} else {
 				//no room
@@ -399,29 +301,25 @@ static int lfrng_read(char *buffer, char **start, off_t offset,
 			rand = thread->next_rand;
 		}
 	}
+	printk(KERN_INFO LFRNG_LOG_ID "next rand for pid=%u,tgid=%u is %d\n", pid, tgid, rand);
+	return rand;
 
-	if(offset == 0) {
-		// New call to lfrng_read
-		lfrng_buffer_size = sprintf(lfrng_buffer, "%d", rand);
-	}
+}
 
-	*start = buffer;
-	// Number of bytes to copy over
-	len = min((int)lfrng_buffer_size - (int)offset, count);
-	if(len < 0) len = 0;
+static int lfrng_read(char *buffer, char **start, off_t offset,
+							 int count, int *peof, void *dat)
+{
+	int len = 0;
 
-	//printk(KERN_INFO LFRNG_LOG_ID "len = %d\n", len);
-
-	memcpy(*start, lfrng_buffer+offset, len);
-	//sprintf(buffer, "%d", rand);
-
-	if(offset + len == lfrng_buffer_size) {
+	//if we're entering this function again
+	if (offset > 0) {
 		*peof = 1;
+		return 0;
 	}
-	// Assume we've copied everything over
-	*peof = 1;
 
-	/*print_thread_groups();*/
+	/*printk( KERN_INFO LFRNG_LOG_ID "next rand would be %llu", get_next_rand(current->pid, current->tgid));*/
+	len = sprintf(buffer,"%llu\n", get_next_rand(current->pid, current->tgid));
+	/*len = sprintf(buffer,"%i %i\n", current->pid, current->tgid);*/
 
 	return len;
 }
@@ -447,9 +345,8 @@ static int lfrng_write(struct file *file, const char *buffer,
 
 	our_buffer[len - 1] = '\0';
 
-	printk(KERN_INFO LFRNG_LOG_ID "data (tgid=%u,pid=%u): %s\n",current->tgid, current->pid, our_buffer);
-	sscanf(our_buffer, "%llu %d", &seed, &n_threads);
-	printk(KERN_INFO LFRNG_LOG_ID "parsed: seed:%llu, n_threads:%d\n", seed, n_threads);
+	sscanf(our_buffer, "%llu %i", &seed, &n_threads);
+	printk(KERN_INFO LFRNG_LOG_ID "tgid=%u,pid=%u parsed: seed:%llu, n_threads:%d\n", current->tgid, current->pid, seed, n_threads);
 
 	group = create_thread_group(current->tgid);
 	group->seed = seed;

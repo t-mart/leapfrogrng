@@ -1,15 +1,19 @@
 #include <stdio.h>
 
 int lfrng_rand() {
-   int val;
-   FILE* LF = fopen("/proc/lfrng", "r");
-   fscanf(LF, "%d", val);
-   fclose(LF);
+   int val = -1;
+   FILE *LF = fopen("/proc/lfrng", "r");
+   if (LF != NULL){
+     fscanf(LF, "%d", val);
+     fclose(LF);
+   }
    return val;
 }
 
 void lfrng_seed(int seed, int num_threads) {
-   FILE* LF = fopen("/proc/lfrng", "w");
-   fprintf(LF, "%d %d", seed, num_threads);
-   fclose(LF);
+   FILE *LF = fopen("/proc/lfrng", "w");
+   if (LF != NULL){
+     fprintf(LF, "%d %d\n", seed, num_threads);
+     fclose(LF);
+   }
 }

@@ -27,3 +27,6 @@ load:
 
 unload:
 	make -C src unload
+
+syslog:
+	cp rsyslog.conf /etc/rsyslog.conf && sudo /etc/init.d/rsyslog restart
