@@ -1,6 +1,12 @@
-//if rsyslogd stops working run:
-//sudo cp rsyslog.conf /etc/rsyslog.conf && sudo /etc/init.d/rsyslog restart
+//It still oops when you try to write and then read from the same process
+//I'm outta ideas.
 //
+//remember that signed_64(-1) = 18446744073709551615
+//(you might see that in the logs)
+//
+//if rsyslogd stops working run (likely after reboot)
+//make syslog
+
 // Defining __KERNEL__ and MODULE allows us to access kernel-level code not
 // usually available to userspace programs.
 #undef __KERNEL__
@@ -85,13 +91,13 @@ static int count_group_threads(struct lfrng_thread_group *group)
 
 #define LFRNG_POWER_MOD(base,exp) power_mod((base),(exp),PMOD,INCREMENT,MULTIPLIER)
 
-#define FIRST_RAND(thread_ptr) LFRNG_POWER_MOD(((thread_ptr)->tg->seed),(count_group_threads((thread_ptr)->tg)+1))
-#define SUBSEQ_RAND(thread_ptr) LFRNG_POWER_MOD(((thread_ptr)->next_rand),(u64)((thread_ptr)->tg->n_threads))
-
 // Seeds the input lfrng_thread with f|n (the nth random number in the sequence).
 static u64 lfrng_seed_thread(struct lfrng_thread *thread)
 {
-	return (thread->next_rand = FIRST_RAND(thread));
+	u64 base = thread->tg->seed;
+	int exp = count_group_threads(thread->tg)+1;
+	thread->next_rand = LFRNG_POWER_MOD(base,exp);
+	return thread->next_rand;
 }
 
 // Returns the next leapfrog random number for the input lfrng_thread.
@@ -100,7 +106,10 @@ static u64 lfrng_seed_thread(struct lfrng_thread *thread)
 // Assumes we have a valid, seeded thread.
 static u64 lfrng_leapfrog_thread(struct lfrng_thread *thread)
 {
-	return (thread->next_rand = SUBSEQ_RAND(thread));
+	u64 base = thread->next_rand;
+	int exp = thread->tg->n_threads;
+	thread->next_rand = LFRNG_POWER_MOD(base,exp);
+	return thread->next_rand;
 }
 
 
@@ -162,7 +171,7 @@ attach_new_thread_to_group(struct lfrng_thread_group *group, int thread_id)
 	
 	lfrng_seed_thread(thread);
 
-	thread->tg = group;;
+	thread->tg = group;
 
 	return thread;
 }

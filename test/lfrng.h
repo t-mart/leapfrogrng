@@ -10,10 +10,10 @@ int lfrng_rand() {
    return val;
 }
 
-void lfrng_seed(int seed, int num_threads) {
+void lfrng_seed(long long unsigned int seed, int num_threads) {
    FILE *LF = fopen("/proc/lfrng", "w");
    if (LF != NULL){
-     fprintf(LF, "%d %d\n", seed, num_threads);
+     fprintf(LF, "%llu %d\n", seed, num_threads);
      fclose(LF);
    }
 }
